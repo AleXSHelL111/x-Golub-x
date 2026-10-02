@@ -9,6 +9,8 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.view.View;
 import android.view.Window;
 import android.webkit.JavascriptInterface;
@@ -128,6 +130,39 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void setMeta(String json) {
             Reminders.saveMeta(MainActivity.this, json);
+        }
+
+        // navigator.vibrate в WebView не работает, поэтому вибрируем сами
+        @JavascriptInterface
+        public void vibrate(String pattern) {
+            Vibrator v = getSystemService(Vibrator.class);
+            if (v == null || !v.hasVibrator()) return;
+            String[] parts = pattern.split(",");
+            long[] t = new long[parts.length];
+            long total = 0;
+            for (int i = 0; i < parts.length; i++) {
+                try {
+                    t[i] = Math.max(0, Math.min(5000, Long.parseLong(parts[i].trim())));
+                } catch (NumberFormatException e) {
+                    t[i] = 0;
+                }
+                total += t[i];
+            }
+            if (total == 0) {
+                v.cancel();
+            } else if (t.length == 1) {
+                // Очень короткие импульсы (8 мс) многие моторы не успевают раскрутить
+                if (Build.VERSION.SDK_INT >= 29 && t[0] <= 40) {
+                    v.vibrate(VibrationEffect.createPredefined(
+                            t[0] < 20 ? VibrationEffect.EFFECT_CLICK : VibrationEffect.EFFECT_HEAVY_CLICK));
+                } else {
+                    v.vibrate(VibrationEffect.createOneShot(Math.max(t[0], 20), VibrationEffect.DEFAULT_AMPLITUDE));
+                }
+            } else {
+                long[] w = new long[t.length + 1];
+                System.arraycopy(t, 0, w, 1, t.length);
+                v.vibrate(VibrationEffect.createWaveform(w, -1));
+            }
         }
 
         @JavascriptInterface

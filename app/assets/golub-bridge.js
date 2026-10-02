@@ -5,6 +5,13 @@
   var A = window.GolubAndroid;
   if (!A) return;
 
+  // --- Вибрация ---
+  navigator.vibrate = function (p) {
+    var a = Array.isArray(p) ? p : [p];
+    A.vibrate(a.map(function (x) { return Math.max(0, +x || 0); }).join(','));
+    return true;
+  };
+
   // --- Уведомления ---
   var permWaiters = [];
   window.__golubPerm = function (state) {
