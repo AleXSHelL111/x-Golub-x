@@ -9,9 +9,14 @@ JAR="$ANDROID_HOME/platforms/android-34/android.jar"
 OUT=build
 rm -rf "$OUT" && mkdir -p "$OUT/gen" "$OUT/classes" "$OUT/dex"
 
+# Игра берётся как есть, в <head> подключается мост golub-bridge.js (до скриптов игры)
+cp -r app/assets "$OUT/assets"
+sed -i '0,/<head>/s##<head><script src="golub-bridge.js"></script>#' "$OUT/assets/index.html"
+grep -q 'golub-bridge.js' "$OUT/assets/index.html"
+
 "$BT/aapt2" compile --dir app/res -o "$OUT/res.zip"
 "$BT/aapt2" link -o "$OUT/unsigned.apk" -I "$JAR" \
-  --manifest app/AndroidManifest.xml -A app/assets \
+  --manifest app/AndroidManifest.xml -A "$OUT/assets" \
   --java "$OUT/gen" "$OUT/res.zip"
 
 javac --release 8 -nowarn -cp "$JAR" -d "$OUT/classes" \

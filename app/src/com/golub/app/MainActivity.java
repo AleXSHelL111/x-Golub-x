@@ -1,9 +1,17 @@
 package com.golub.app;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.view.View;
+import android.view.Window;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -11,14 +19,20 @@ import android.webkit.WebViewClient;
 
 public class MainActivity extends Activity {
     private static final String START_URL = "file:///android_asset/index.html";
+    private static final int REQ_NOTIF = 1;
     private WebView web;
+    private int nightMode;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        nightMode = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+        Reminders.createChannel(this);
+
         web = new WebView(this);
-        web.setBackgroundColor(0xFFEEF2F8);
+        web.setBackgroundColor(getColor(R.color.bg));
         setContentView(web);
+        applyBars(getColor(R.color.bg));
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -31,6 +45,7 @@ public class MainActivity extends Activity {
         s.setAllowUniversalAccessFromFileURLs(true);
         s.setSupportMultipleWindows(false);
 
+        web.addJavascriptInterface(new Bridge(), "GolubAndroid");
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
@@ -52,6 +67,91 @@ public class MainActivity extends Activity {
         return true;
     }
 
+    // Статус-бар и панель навигации в цвет фона игры, иконки — контрастные
+    private void applyBars(int color) {
+        Window w = getWindow();
+        w.setStatusBarColor(color);
+        w.setNavigationBarColor(color);
+        if (Build.VERSION.SDK_INT >= 28) w.setNavigationBarDividerColor(color);
+        boolean light = (Color.red(color) * 299 + Color.green(color) * 587 + Color.blue(color) * 114) / 1000 > 140;
+        View d = w.getDecorView();
+        int f = d.getSystemUiVisibility();
+        int lightFlags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                | (Build.VERSION.SDK_INT >= 26 ? View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR : 0);
+        d.setSystemUiVisibility(light ? (f | lightFlags) : (f & ~lightFlags));
+    }
+
+    private String notifPermission() {
+        if (Reminders.notificationsEnabled(this)) return "granted";
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            return "default";
+        }
+        return "denied";
+    }
+
+    private void permResult() {
+        String st = notifPermission();
+        if (!"granted".equals(st)) st = "denied";
+        final String js = "window.__golubPerm&&window.__golubPerm('" + st + "')";
+        web.evaluateJavascript(js, null);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
+        if (code == REQ_NOTIF) permResult();
+    }
+
+    private class Bridge {
+        @JavascriptInterface
+        public String notifPermission() {
+            return MainActivity.this.notifPermission();
+        }
+
+        @JavascriptInterface
+        public void requestNotifPermission() {
+            runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT >= 33
+                        && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIF);
+                } else {
+                    permResult();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void notify(String title, String body) {
+            Reminders.show(MainActivity.this, title.isEmpty() ? getString(R.string.app_name) : title, body, 1);
+        }
+
+        @JavascriptInterface
+        public void setMeta(String json) {
+            Reminders.saveMeta(MainActivity.this, json);
+        }
+
+        @JavascriptInterface
+        public void setBars(int r, int g, int b) {
+            final int c = Color.rgb(r, g, b);
+            runOnUiThread(() -> {
+                web.setBackgroundColor(c);
+                applyBars(c);
+            });
+        }
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration cfg) {
+        super.onConfigurationChanged(cfg);
+        int night = cfg.uiMode & Configuration.UI_MODE_NIGHT_MASK;
+        if (night != nightMode) {
+            // Тема WebView берётся из темы активити, поэтому пересоздаём её,
+            // предварительно сохранив прогресс игры.
+            nightMode = night;
+            web.evaluateJavascript("try{save()}catch(e){}", v -> recreate());
+        }
+    }
+
     @Override
     protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
@@ -61,6 +161,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        web.evaluateJavascript("try{save();writeMeta()}catch(e){}", null);
         web.onPause();
     }
 
@@ -68,6 +169,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         web.onResume();
+        Reminders.cancelShown(this);
     }
 
     @Override
