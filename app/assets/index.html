@@ -82,6 +82,8 @@ h3{font-size:15px;font-weight:600;margin:22px 0 10px}
 .tile.eq .lvl{color:var(--act);background:var(--ac)}
 .tile small{flex:1;font-size:12px}.tile .buy{width:100%;margin-top:auto}
 .seg{display:flex;gap:4px;padding:4px;background:var(--s2);border-radius:999px;margin:0 0 14px}
+#pseg{position:sticky;top:calc(env(safe-area-inset-top,0px) + var(--toph,66px) - 1px);z-index:4;margin:0 -16px;padding:4px 16px 2px;background:var(--bg)}
+#pseg .seg{box-shadow:0 6px 14px -10px rgba(0,0,0,.45)}
 .seg.g2{display:grid;grid-template-columns:1fr 1fr;border-radius:20px}
 .segb{position:relative;flex:1 1 0;min-width:0;background:none;border-radius:999px;padding:10px 6px;font-size:13px;font-weight:700;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .seg.g2 .segb{border-radius:16px}
@@ -258,6 +260,7 @@ body:has(.modal.on) #toast{bottom:auto;top:calc(14px + env(safe-area-inset-top,0
 <div id="coach" hidden><div class="ch-hole" id="chole"></div><div class="ch-tip" id="ctip"><p id="ctxt"></p><div class="ch-act"><button class="skip" id="cskip">Пропустить обучение</button><span class="ch-step" id="cstep"></span><button class="buy" id="cnext">Понятно</button></div></div></div>
 <div class="modal" id="ov"></div>
 <script>
+(function(){const h=document.querySelector('header.top');if(!h)return;const f=()=>document.documentElement.style.setProperty('--toph',h.offsetHeight+'px');f();if(window.ResizeObserver)new ResizeObserver(f).observe(h);else addEventListener('resize',f)})();
 const DONATE_URL="https://web.tribute.tg/d/R1l";
 // Адрес веб-приложения Google Apps Script (заканчивается на /exec). Пусто — облако выключено.
 const SYNC_URL="https://script.google.com/macros/s/AKfycbxifuXD8A6KWnXUyysKTA2PhECNs3Vr-RJ0lZQjVTyQKKPOiyqwWnqNg-PpX-lfXlvg/exec";
