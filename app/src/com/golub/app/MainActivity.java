@@ -9,6 +9,8 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.media.AudioAttributes;
+import android.os.VibrationAttributes;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.view.View;
@@ -22,7 +24,12 @@ import android.webkit.WebViewClient;
 public class MainActivity extends Activity {
     private static final String START_URL = "file:///android_asset/index.html";
     private static final int REQ_NOTIF = 1;
+    private static final AudioAttributes GAME_AUDIO = new AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_GAME)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build();
     private WebView web;
+    private Vibrator vibrator;
     private int nightMode;
 
     @Override
@@ -30,6 +37,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         nightMode = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
         Reminders.createChannel(this);
+        vibrator = getSystemService(Vibrator.class);
 
         web = new WebView(this);
         web.setBackgroundColor(getColor(R.color.bg));
@@ -135,8 +143,7 @@ public class MainActivity extends Activity {
         // navigator.vibrate в WebView не работает, поэтому вибрируем сами
         @JavascriptInterface
         public void vibrate(String pattern) {
-            Vibrator v = getSystemService(Vibrator.class);
-            if (v == null || !v.hasVibrator()) return;
+            if (vibrator == null || !vibrator.hasVibrator()) return;
             String[] parts = pattern.split(",");
             long[] t = new long[parts.length];
             long total = 0;
@@ -149,19 +156,28 @@ public class MainActivity extends Activity {
                 total += t[i];
             }
             if (total == 0) {
-                v.cancel();
-            } else if (t.length == 1) {
-                // Очень короткие импульсы (8 мс) многие моторы не успевают раскрутить
-                if (Build.VERSION.SDK_INT >= 29 && t[0] <= 40) {
-                    v.vibrate(VibrationEffect.createPredefined(
-                            t[0] < 20 ? VibrationEffect.EFFECT_CLICK : VibrationEffect.EFFECT_HEAVY_CLICK));
-                } else {
-                    v.vibrate(VibrationEffect.createOneShot(Math.max(t[0], 20), VibrationEffect.DEFAULT_AMPLITUDE));
-                }
+                vibrator.cancel();
+                return;
+            }
+            VibrationEffect fx;
+            if (t.length == 1) {
+                // Игра просит 8 мс на клик и 30 мс на крит: такие импульсы мотор
+                // не успевает раскрутить, поэтому растягиваем и задаём силу явно.
+                boolean strong = t[0] >= 20;
+                long ms = strong ? Math.max(t[0], 55) : Math.max(t[0], 28);
+                int amp = vibrator.hasAmplitudeControl() ? (strong ? 255 : 190) : VibrationEffect.DEFAULT_AMPLITUDE;
+                fx = VibrationEffect.createOneShot(ms, amp);
             } else {
                 long[] w = new long[t.length + 1];
                 System.arraycopy(t, 0, w, 1, t.length);
-                v.vibrate(VibrationEffect.createWaveform(w, -1));
+                fx = VibrationEffect.createWaveform(w, -1);
+            }
+            // Помечаем как игровую (медиа), а не как отклик на касание: такие вибрации
+            // прошивки глушат настройками тактильного отклика и при частых нажатиях.
+            if (Build.VERSION.SDK_INT >= 33) {
+                vibrator.vibrate(fx, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_MEDIA));
+            } else {
+                vibrator.vibrate(fx, GAME_AUDIO);
             }
         }
 
